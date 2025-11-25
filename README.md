@@ -30,8 +30,7 @@ Markov-Mobilitas-Mahasiswa-ITERA-2025
 ├── Data
 │ └── raw_data.csv
 │
-├── R
-│ └── Rantai Markov.RMD
+├── code.R.RMD
 │
 ├── Gambar
 │ ├── diagram_alir.jpg
