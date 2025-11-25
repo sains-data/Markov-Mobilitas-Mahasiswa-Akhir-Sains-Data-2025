@@ -33,7 +33,7 @@ Markov-Mobilitas-Mahasiswa-ITERA-2025
 ├── code.R.RMD
 │
 ├── Gambar
-│ ├── diagram alir.jpg
+│ ├── diagram_alir.jpg
 │ ├── transition_graph.jpg
 │ └── plot_frekuensi.jpg
 │
@@ -70,7 +70,7 @@ Berikut distribusi observasi per state:
 
 Proses analisis dilakukan dengan tahapan berikut:
 
-![Diagram Alir](Gambar/diagram alir.jpg)
+![Diagram Alir](Gambar/diagram_alir.jpg)
 
 * Penyusunan matriks transisi (N)
 * Konversi ke matriks probabilitas transisi (P)
