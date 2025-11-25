@@ -1,0 +1,488 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Import Data
+
+```{r}
+library(readxl)
+Responden_kuesioner <- read_excel("C:/Users/lenovo/Documents/PEMSTOK/TUBES/Responden kuesioner.xlsx")
+(Responden_kuesioner)
+```
+
+```{r}
+# (Pastikan Anda sudah menjalankan kode 'read_excel' sebelumnya)
+
+# Menampilkan nama-nama kolom
+names(Responden_kuesioner)
+```
+
+```{r}
+# === 6) Plot Visualisasi Frekuensi (Dengan Persentase + Tanpa Legend + Label Nama Lokasi) ===
+
+freq_df <- as.data.frame(freq)
+colnames(freq_df) <- c("Lokasi", "Frekuensi")
+
+# Mapping nama state → nama lokasi lengkap
+mapping <- c(
+  "C" = "Kelas",
+  "K" = "Kantin",
+  "P" = "Perpustakaan",
+  "S" = "Kosan"
+)
+
+freq_df$LokasiFull <- mapping[freq_df$Lokasi]
+
+# Hitung persentase
+freq_df$Persen <- freq_df$Frekuensi / sum(freq_df$Frekuensi) * 100
+
+# Atur batas Y agar label tidak kepotong
+max_y <- max(freq_df$Frekuensi) * 1.20
+
+library(ggplot2)
+
+ggplot(freq_df, aes(x = LokasiFull, y = Frekuensi, fill = Lokasi)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  
+  # Tambahkan label frekuensi + persen
+  geom_text(
+    aes(label = paste0(Frekuensi, " (", round(Persen,1), "%)")),
+    vjust = -0.6,
+    size = 4,
+    fontface = "bold"
+  ) +
+  
+  scale_fill_manual(values = c(
+    "C"="#4C72B0",
+    "K"="#55A868",
+    "P"="#C44E52",
+    "S"="#8172B2"
+  )) +
+  
+  # Hilangkan legend
+  guides(fill = "none") +
+  
+  scale_y_continuous(limits = c(0, max_y)) +
+  
+  labs(
+    title = "Jumlah Aktivitas Mahasiswa Berdasarkan Lokasi (K, C, S, P)",
+    x = "Lokasi",
+    y = "Jumlah Aktivitas"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(
+      hjust = 0.5,
+      face = "bold",
+      size = 12
+    ),
+    axis.text = element_text(size = 11),
+    axis.title = element_text(size = 11),
+    panel.grid.major.x = element_blank()
+  )
+
+```
+
+```{r}
+# =======================
+# 1) LOAD DATA
+# =======================
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+df <- read_excel("C:/Users/lenovo/Documents/PEMSTOK/TUBES/Responden kuesioner.xlsx")
+
+# Normalisasi nama kolom agar rapi
+names(df) <- trimws(names(df))
+
+# Kolom yang digunakan
+col_freq  <- "Seberapa Sering Anda Berpindah Lokasi dalam Satu Hari?"
+col_tujuan <- "Setelah Keluar dari Kelas, Anda Paling Sering Menuju:"
+col_faktor <- "Faktor Utama yang Memengaruhi Keputusan Berpindah Lokasi:"
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# ---- Bar Plot Frekuensi Pindah Lokasi ----
+df_freq <- df %>% count(!!sym(col_freq))
+
+# Hitung persentase
+total_responden <- sum(df_freq$n)
+df_freq <- df_freq %>%
+  mutate(
+    persentase = round(100 * n / total_responden, 1),
+    label_full = paste0(n, " (", persentase, "%)")
+  )
+
+ggplot(df_freq, aes(x = reorder(!!sym(col_freq), -n), y = n, fill = !!sym(col_freq))) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = label_full), 
+            vjust = -0.4, 
+            size = 4, 
+            fontface = "bold") +
+  labs(
+    title = "Frekuensi Perpindahan Lokasi Mahasiswa per Hari",
+    x = "Kategori Frekuensi",
+    y = "Jumlah Mahasiswa"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(
+      hjust = 0.5,       # judul di tengah
+      face = "bold",
+      size = 13
+    ),
+    axis.text = element_text(size = 11),
+    axis.title = element_text(size = 11),
+    panel.grid.major.x = element_blank()
+  )
+
+```
+
+# 1) Identifikasi Ruang Keadaan (state space) + parsing data
+
+```{r}
+## ==== 1) SETUP & BACA DATA ====
+# (jalankan sekali di awal)
+
+# Package (install bila perlu):
+# install.packages(c("readxl","dplyr","stringr","tidyr","purrr","igraph","expm"))
+
+library(readxl)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(purrr)
+library(igraph)
+library(expm)
+
+# Path file
+xls_path <- "C:/Users/lenovo/Documents/PEMSTOK/TUBES/Responden kuesioner.xlsx"
+
+# Baca sheet pertama (kalau sheet-mu bernama lain, sesuaikan)
+sheet_names <- readxl::excel_sheets(xls_path)
+df <- readxl::read_excel(xls_path, sheet = sheet_names[1])
+
+# Normalisasi nama kolom
+names(df) <- names(df) |> str_trim()
+
+# Deteksi kolom jam (07.00, 07:00, Jam 07.00, dst)
+is_time_col <- function(x){
+  # ambil jam 0-23
+  m <- str_match(x, "(?i)\\b(?:jam\\s*)?(\\d{1,2})(?::|\\.|\\s*0{2})?\\b")
+  if (is.na(m[,2])) return(NA_integer_)
+  h <- as.integer(m[,2])
+  ifelse(!is.na(h) & h>=0 & h<=23, h, NA_integer_)
+}
+hours <- map_int(names(df), is_time_col)
+time_cols <- names(df)[!is.na(hours)]
+time_hours <- hours[!is.na(hours)]
+ord <- order(time_hours)
+time_cols <- time_cols[ord]
+time_hours <- time_hours[ord]
+
+# Fungsi normalisasi state ke {C,K,P,S,NA}
+norm_state <- function(x){
+  if (is.na(x)) return("NA")
+  s <- toupper(str_trim(as.character(x)))
+  mapping <- c(
+    "KELAS"="C","CLASS"="C","KULIAH"="C","C"="C",
+    "KANTIN"="K","CAFETERIA"="K","CANTEEN"="K","K"="K",
+    "PERPUSTAKAAN"="P","PERPUS"="P","LIBRARY"="P","P"="P",
+    "KOSAN"="S","KOST"="S","DORM"="S","ASRAMA"="S","RUMAH"="S","S"="S",
+    "NA"="NA","N/A"="NA","-"="NA","TIDAK TAHU"="NA","TIDAK DIKETAHUI"="NA","UNKNOWN"="NA"
+  )
+  if (s %in% names(mapping)) return(mapping[[s]])
+  first <- substr(s,1,1)
+  if (first %in% c("C","K","P","S")) return(first)
+  "NA"
+}
+
+# Bentuk matriks observasi state (baris = responden, kolom = jam berurutan)
+obs <- df[, time_cols, drop=FALSE] |>
+  mutate(across(everything(), \(z) vapply(z, norm_state, character(1))))
+
+# Identifikasi state yang benar-benar muncul
+valid_states <- c("C","K","P","S")
+observed_states <- sort(unique(unlist(obs)))
+observed_states <- intersect(observed_states, valid_states)
+
+cat("Ruang keadaan teramati:", paste(observed_states, collapse=", "), "\n")
+cat("Jumlah responden:", nrow(obs), " | Kolom jam terdeteksi:", ncol(obs), "\n")
+
+```
+
+# 2) Matriks Transisi (hitung nᵢⱼ dan probabilitas P)
+
+```{r}
+## ==== 2) HITUNG MATRIKS TRANSISI ====
+states <- c("C","K","P","S")
+count_mat <- matrix(0L, nrow=4, ncol=4, dimnames=list(states, states))
+
+for (r in 1:nrow(obs)) {
+  seq_vec <- as.character(obs[r, ])
+  # hitung pasangan berurutan
+  for (k in 1:(length(seq_vec)-1)) {
+    a <- seq_vec[k]; b <- seq_vec[k+1]
+    if (a %in% states && b %in% states) {
+      count_mat[a,b] <- count_mat[a,b] + 1L
+    }
+  }
+}
+
+# Probabilitas baris (row-stochastic)
+row_sums <- rowSums(count_mat)
+P <- sweep(count_mat, 1, ifelse(row_sums==0, 1, row_sums), "/")
+
+# Tampilkan
+cat("\nMatriks Hitung Transisi n_ij:\n"); print(as.table(count_mat))
+cat("\nMatriks Probabilitas Transisi P:\n"); print(round(P, 3))
+
+```
+
+## Jika mau simpan hasil dari Matriks Transisi ke file:
+
+```{r}
+write.csv(count_mat, "count_matrix.csv")
+write.csv(P, "transition_matrix_P.csv")
+```
+
+```{r}
+getwd()
+```
+
+```{r}
+# Untuk membuka 'count_mat' di tab baru
+View(count_mat)
+
+# Untuk membuka 'P' di tab baru
+View(P)
+```
+
+# 3) Diagram Transisi (graf berarah berbobot)
+
+```{r}
+## ==== 3) DIAGRAM TRANSISI ====
+# Buat edge list dari P (hanya edge dengan p>0)
+edges <- which(P > 0, arr.ind = TRUE)
+g <- graph_from_data_frame(
+  data.frame(
+    from = rownames(P)[edges[,1]],
+    to   = colnames(P)[edges[,2]],
+    weight = as.numeric(P[edges])
+  ),
+  directed = TRUE, vertices = data.frame(name=states)
+)
+
+# Tata letak melingkar agar rapi
+set.seed(42)
+plot(
+  g,
+  layout = layout_in_circle(g),
+  edge.width = E(g)$weight * 10,             # tebal ~ bobot
+  edge.arrow.size = 0.4,
+  vertex.size = 30,
+  vertex.color = "lightblue",
+  vertex.frame.color = "gray40",
+  vertex.label.color = "black",
+  vertex.label.cex = 1.2,
+  edge.label = round(E(g)$weight, 2),
+  edge.label.cex = 0.9
+)
+title("Diagram Transisi (bobot = probabilitas)")
+
+```
+
+# 4) Probabilitas Langkah ke-n (Pⁿ) & contoh prediksi
+
+```{r}
+## ==== 4) PROBABILITAS LANGKAH KE-n ====
+# P^n via package 'expm'
+Pn <- function(P, n) P %^% n
+
+# Contoh: n = 2, 3, 10
+P2 <- Pn(P, 2)
+P3 <- Pn(P, 3)
+P10 <- Pn(P, 10)
+
+cat("\nP^2:\n"); print(round(P2, 3))
+cat("\nP^3:\n"); print(round(P3, 3))
+cat("\nP^10:\n"); print(round(P10, 3))
+
+# Contoh distribusi setelah n langkah dari kondisi awal mu:
+# Misal mulai dari 'C' (vektor satu-hot)
+pi0 <- c(C=1, K=0, P=0, S=0)
+dist_after_5 <- as.numeric(pi0 %*% Pn(P,5))
+names(dist_after_5) <- states
+cat("\nDistribusi setelah 5 langkah dari C:\n"); print(round(dist_after_5, 3))
+```
+
+# 5) Distribusi Stasioner (π) --- eigen kiri(λ=1) & verifikasi
+
+```{r}
+## ==== 5) DISTRIBUSI STASIONER ====
+# Metode eigen kiri: cari eigenvector v sehingga vP = v, sum(v)=1
+eig <- eigen(t(P))
+# Cari eigenvalue terdekat 1
+idx1 <- which.min(abs(eig$values - 1))
+pi_raw <- Re(eig$vectors[, idx1])
+pi <- pi_raw / sum(pi_raw)   # normalisasi
+names(pi) <- states
+cat("\nDistribusi stasioner (π):\n"); print(round(pi, 4))
+
+# Verifikasi numerik: πP ≈ π
+check <- as.numeric(pi %*% P)
+names(check) <- states
+cat("\nCek πP (harus ≈ π):\n"); print(round(check, 4))
+
+```
+
+# 7) Klasifikasi Ruang Keadaan (komunikasi, recurrent/transient, aperiodik)
+
+```{r}
+## ==== 6) KLASIFIKASI STATE ====
+# Gunakan graf probabilitas (edge jika p>0)
+edges_bin <- which(P > 0, arr.ind = TRUE)
+g0 <- graph_from_data_frame(
+  data.frame(from=rownames(P)[edges_bin[,1]], to=colnames(P)[edges_bin[,2]]),
+  directed = TRUE, vertices = data.frame(name=states)
+)
+
+# 6a) Komponen kuat terhubung (communicating classes)
+scc <- components(g0, mode = "strong")
+classes <- split(names(scc$membership), scc$membership)
+cat("\nCommunicating classes:\n")
+print(classes)
+
+# 6b) Recurrent vs transient:
+# Sebuah kelas dianggap recurrent jika tidak ada edge ke luar kelas
+is_recurrent <- function(class_nodes) {
+  idx <- which(rownames(P) %in% class_nodes)
+  out_prob <- sum(P[idx, setdiff(1:ncol(P), idx)])
+  out_prob == 0
+}
+class_types <- sapply(classes, is_recurrent)
+cat("\nTipe kelas (TRUE=recurrent, FALSE=transient):\n")
+print(class_types)
+
+# 6c) Aperiodisitas:
+# Periode state i = gcd{ n >=1 : (P^n)[i,i] > 0 }. Estimasi sampai n_max.
+period_of_state <- function(P, i, n_max=50){
+  diags <- sapply(1:n_max, function(n) (P %^% n)[i,i] > 0)
+  ks <- which(diags)
+  if (length(ks)==0) return(NA_integer_)
+  # gcd sederhana
+  g <- ks[1]
+  for (k in ks[-1]) g <- gcd(g, k)
+  g
+}
+gcd <- function(a,b){ while(b!=0){ tmp <- a %% b; a <- b; b <- tmp }; a }
+
+periods <- sapply(1:nrow(P), function(i) period_of_state(P, i, n_max=50))
+names(periods) <- states
+cat("\nPeriode masing-masing state (1 = aperiodik):\n"); print(periods)
+
+```
+
+# 6) Plot Proporsi Steady-State
+
+```{r}
+# ----- Plot Proporsi Steady-State -----
+# (letakkan ini setelah Anda menghitung `pi`)
+
+# Pastikan paket yang diperlukan ada
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("scales", quietly = TRUE)) install.packages("scales")
+library(ggplot2)
+library(scales)
+
+# Jika variable pi belum ada (untuk berjaga-jaga), hitung ulang:
+if (!exists("pi") || is.null(pi)) {
+  eig <- eigen(t(P))
+  idx1 <- which.min(abs(eig$values - 1))
+  pi <- Re(eig$vectors[, idx1])
+  pi <- pi / sum(pi)
+  pi[pi < 0] <- 0
+  pi <- pi / sum(pi)
+  names(pi) <- states
+}
+
+# Data frame untuk plotting
+df_pi <- data.frame(
+  state = names(pi),
+  pi = as.numeric(pi)
+)
+df_pi$label <- paste0(round(df_pi$pi * 100, 1), "%")
+
+# Urutkan state berdasarkan pi (descending) untuk tampilan lebih informatif
+df_pi <- df_pi[order(df_pi$pi, decreasing = TRUE), ]
+df_pi$state <- factor(df_pi$state, levels = df_pi$state)
+
+# Plot dengan ggplot2
+p <- ggplot(df_pi, aes(x = state, y = pi, fill = state)) +
+  geom_col(width = 0.8, show.legend = FALSE) +
+  geom_text(aes(label = label), vjust = -0.4, size = 4) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     limits = c(0, max(df_pi$pi) * 1.15)) +
+  labs(
+    title = "Distribusi Steady-State (π)",
+    x = "State",
+    y = "Proporsi (π)"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(
+      hjust = 0.4,     # <<< INILAH BAGIAN PENTING (MEMBUAT JUDUL DI TENGAH)
+      face = "bold",
+      size = 15
+    ),
+    axis.text.x = element_text(size = 13),
+    axis.title = element_text(size = 13)
+  )
+
+# Tampilkan plot
+print(p)
+
+# Simpan ke file PNG di folder kerja saat ini / markov_results bila ada
+out_dir <- "markov_results"
+if (!dir.exists(out_dir)) dir.create(out_dir)
+ggsave(filename = file.path(out_dir, "steady_state_bar.png"),
+       plot = p, width = 7, height = 4, dpi = 150)
+
+cat("Grafik steady-state disimpan sebagai:",
+    file.path(out_dir, "steady_state_bar.png"), "\n")
+
+
+```
+
+## Bonus (opsional cepat)
+
+**Mixing time** kasar (berapa langkah sampai semua baris Pⁿ ≈ π):
+
+```{r}
+## ==== BONUS: MIXING TIME KASAR ====
+l1 <- function(a,b) sum(abs(a-b))
+mix_time <- function(P, eps=1e-6, max_t=500){
+  pi <- {
+    eig <- eigen(t(P)); idx <- which.min(abs(eig$values - 1))
+    v <- Re(eig$vectors[, idx]); v/sum(v)
+  }
+  M <- diag(nrow(P))
+  for (t in 1:max_t) {
+    M <- M %*% P
+    d <- max(apply(M, 1, function(row) l1(row, pi)))
+    if (d <= eps) return(t)
+  }
+  NA_integer_
+}
+mt <- mix_time(P, eps=1e-6, max_t=500)
+cat("\nPerkiraan mixing time (langkah):", mt, "\n")
+
+```
