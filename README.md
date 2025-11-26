@@ -27,13 +27,13 @@ Markov-Mobilitas-Mahasiswa-ITERA-2025
 ├── README.md
 ├── Laporan_09_RA.pdf
 │
-├── Data_09_RA
+├── Data_09_RA.xlsf
 │
-├── CodeR_09_RA
+├── CodeR_09_RA.RMD
 │
-|── Poster_09_RA
+|── Poster_09_RA.png
 |
-|── Vidio_09_RA
+|── Vidio_09_RA.mp4
 |
 ├── Gambar
 │ ├── diagram_alir.jpg
