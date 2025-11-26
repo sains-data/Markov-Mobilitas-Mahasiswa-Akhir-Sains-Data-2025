@@ -25,13 +25,16 @@ Tujuan penelitian ini adalah:
 Markov-Mobilitas-Mahasiswa-ITERA-2025
 │
 ├── README.md
-├── Laporan Kelompok 9-RA.pdf
+├── Laporan_09_RA.pdf
 │
-├── Data
-│ └── raw_data.csv
+├── Data_09_RA
 │
-├── code.R.RMD
+├── CodeR_09_RA
 │
+|── Poster_09_RA
+|
+|── Vidio_09_RA
+|
 ├── Gambar
 │ ├── diagram_alir.jpg
 │ ├── transition_graph.jpg
